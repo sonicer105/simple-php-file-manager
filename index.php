@@ -41,7 +41,7 @@ if(!$_SESSION['_sfm_allowed']) {
 // must be in UTF-8 or `basename` doesn't work
 setlocale(LC_ALL,'en_US.UTF-8');
 
-$tmp = realpath($_REQUEST['file']);
+$tmp = realpath(urldecode($_REQUEST['file']));
 if($tmp === false)
 	err(404,'File or Directory Not Found');
 if(substr($tmp, 0,strlen(__DIR__)) !== __DIR__)
@@ -54,7 +54,7 @@ if($_POST) {
 		err(403,"XSRF Failure");
 }
 
-$file = $_REQUEST['file'] ?: '.';
+$file = urldecode($_REQUEST['file']) ?: '.';
 if($_GET['do'] == 'list') {
 	if (is_dir($file)) {
 		$directory = $file;
@@ -397,7 +397,7 @@ $(function(){
 		$.each(path.split('/'),function(k,v){
 			if(v) {
 				$html.append( $('<span/>').text(' ▸ ') )
-					.append( $('<a/>').attr('href','#'+base+v).text(v) );
+					.append( $('<a/>').attr('href','#'+base+v).text(decodeURIComponent(v)) );
 				base += v + '/';
 			}
 		});
@@ -450,5 +450,5 @@ $(function(){
 </tr></thead><tbody id="list">
 
 </tbody></table>
-<footer><a href="https://github.com/thinkdj/simple-php-file-manager" target="_blank">Simple PHP File Manager</a> (forked from <a href="https://github.com/jcampbell1/simple-file-manager" target="_blank">simple-file-manager</a>)</footer>
+<footer><a href="https://github.com/sonicer105/simple-php-file-manager" target="_blank">Simple PHP File Manager</a> (forked from <a href="https://github.com/thinkdj/simple-php-file-manager" target="_blank">thinkdj's Simple PHP File Manager</a>)</footer>
 </body></html>
