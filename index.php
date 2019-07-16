@@ -20,6 +20,9 @@ $files_to_skip = array(
     '..',
     'index.php'
 );
+// If this script is not at the root of your website, you can specify a starting breadcrumb used to get to this page.
+// in the format 'display name' => 'relative path'. NOTE: Remember to end with a crumb relative path equal to '#'.
+$breadcrumb_base = array('files' => '#');
 
 /* Uncomment section below, if you want a trivial password protection */
 
@@ -71,12 +74,9 @@ if($_GET['do'] == 'list') {
 	        	'is_dir' => is_dir($i),
 	        	'is_deleteable' => $allow_delete && ((!is_dir($i) && is_writable($directory)) ||
                                                            (is_dir($i) && is_writable($directory) && is_recursively_deleteable($i))),
-
-	        	
-	        	
-	        	'is_readable' => is_readable($i),
+                'unix_owner' => posix_getpwuid(fileowner($i))['name'] . ':' . posix_getgrgid(filegroup($i))['name'],
+	        	'unix_perms' => getUnixPerms($i),
 	        	'is_writable' => is_writable($i),
-	        	'is_executable' => is_executable($i),
 	        );
 	    }
 	} else {
@@ -155,15 +155,70 @@ function asBytes($ini_v) {
 	$s = array('g'=> 1<<30, 'm' => 1<<20, 'k' => 1<<10);
 	return intval($ini_v) * ($s[strtolower(substr($ini_v,-1))] ?: 1);
 }
+
+function getUnixPerms($path) {
+    $perms = fileperms($path);
+
+    switch ($perms & 0xF000) {
+        case 0xC000: // socket
+            $info = 's';
+            break;
+        case 0xA000: // symbolic link
+            $info = 'l';
+            break;
+        case 0x8000: // regular
+            $info = '-';
+            break;
+        case 0x6000: // block special
+            $info = 'b';
+            break;
+        case 0x4000: // directory
+            $info = 'd';
+            break;
+        case 0x2000: // character special
+            $info = 'c';
+            break;
+        case 0x1000: // FIFO pipe
+            $info = 'p';
+            break;
+        default: // unknown
+            $info = 'u';
+    }
+
+// Owner
+    $info .= (($perms & 0x0100) ? 'r' : '-');
+    $info .= (($perms & 0x0080) ? 'w' : '-');
+    $info .= (($perms & 0x0040) ?
+        (($perms & 0x0800) ? 's' : 'x' ) :
+        (($perms & 0x0800) ? 'S' : '-'));
+
+// Group
+    $info .= (($perms & 0x0020) ? 'r' : '-');
+    $info .= (($perms & 0x0010) ? 'w' : '-');
+    $info .= (($perms & 0x0008) ?
+        (($perms & 0x0400) ? 's' : 'x' ) :
+        (($perms & 0x0400) ? 'S' : '-'));
+
+// World
+    $info .= (($perms & 0x0004) ? 'r' : '-');
+    $info .= (($perms & 0x0002) ? 'w' : '-');
+    $info .= (($perms & 0x0001) ?
+        (($perms & 0x0200) ? 't' : 'x' ) :
+        (($perms & 0x0200) ? 'T' : '-'));
+
+    return $info;
+}
+
 $MAX_UPLOAD_SIZE = min(asBytes(ini_get('post_max_size')), asBytes(ini_get('upload_max_filesize')));
 ?>
 <!DOCTYPE html>
-<html><head>
+<html lang="en">
+<head>
 <title>Simple PHP File Manager</title>
 <meta http-equiv="content-type" content="text/html; charset=utf-8">
 <meta name="robots" content="noindex, nofollow">
 <style>
-body {font-family: "lucida grande","Segoe UI",Arial, sans-serif; font-size: 14px;width:1024;padding:1em;margin:0;}
+body {font-family: "lucida grande","Segoe UI",Arial, sans-serif; font-size: 14px;width:1024px;padding:1em;margin:0 auto;}
 th {font-weight: normal; color: #1F75CC; background-color: #F0F9FF; padding:.5em 1em .5em .2em; 
 	text-align: left;cursor:pointer;user-select: none;}
 th .indicator {margin-left: 6px }
@@ -195,7 +250,7 @@ td.first {font-size:14px;white-space: normal;}
 td.empty { color:#777; font-style: italic; text-align: center;padding:3em 0;}
 .is_dir .size {color:transparent;font-size:0;}
 .is_dir .size:before {content: "--"; font-size:14px;color:#333;}
-.is_dir .download{visibility: hidden}
+.is_dir .download{color: #999}
 a.delete {display:inline-block;
 	background: url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAoAAAAKCAYAAACNMs+9AAAABGdBTUEAAK/INwWK6QAAABl0RVh0U29mdHdhcmUAQWRvYmUgSW1hZ2VSZWFkeXHJZTwAAADtSURBVHjajFC7DkFREJy9iXg0t+EHRKJDJSqRuIVaJT7AF+jR+xuNRiJyS8WlRaHWeOU+kBy7eyKhs8lkJrOzZ3OWzMAD15gxYhB+yzAm0ndez+eYMYLngdkIf2vpSYbCfsNkOx07n8kgWa1UpptNII5VR/M56Nyt6Qq33bbhQsHy6aR0WSyEyEmiCG6vR2ffB65X4HCwYC2e9CTjJGGok4/7Hcjl+ImLBWv1uCRDu3peV5eGQ2C5/P1zq4X9dGpXP+LYhmYz4HbDMQgUosWTnmQoKKf0htVKBZvtFsx6S9bm48ktaV3EXwd/CzAAVjt+gHT5me0AAAAASUVORK5CYII=) no-repeat scroll 0 2px;
 	color:#d00;	margin-left: 15px;font-size:11px;padding:0 0 0 13px;
@@ -208,49 +263,53 @@ a.delete {display:inline-block;
 	background: url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAABHNCSVQICAgIfAhkiAAAAAlwSFlzAAADdgAAA3YBfdWCzAAAABl0RVh0U29mdHdhcmUAd3d3Lmlua3NjYXBlLm9yZ5vuPBoAAAI0SURBVFiF7Vctb1RRED1nZu5977VQVBEQBKZ1GCDBEwy+ISgCBsMPwOH4CUXgsKQOAxq5CaKChEBqShNK222327f79n0MgpRQ2qC2twKOGjE352TO3Jl76e44S8iZsgOww+Dhi/V3nePOsQRFv679/qsnV96ehgAeWvBged3vXi+OJewMW/Q+T8YCLr18fPnNqQq4fS0/MWlQdviwVqNpp9Mvs7l8Wn50aRH4zQIAqOruxANZAG4thKmQA8D7j5OFw/iIgLXvo6mR/B36K+LNp71vVd1cTMR8BFmwTesc88/uLQ5FKO4+k4aarbuPnq98mbdo2q70hmU0VREkEeCOtqrbMprmFqM1psoYAsg0U9EBtB0YozUWzWpVZQgBxMm3YPoCiLpxRrPaYrBKRSUL5qn2AgFU0koMVlkMOo6G2SIymQCAGE/AGHRsWbCRKc8VmaBN4wBIwkZkFmxkWZDSFCwyommZSABgCmZBSsuiHahA8kA2iZYzSapAsmgHlgfdVyGLTFg3iZqQhAqZB923GGUgQhYRVElmAUXIGGVgedQ9AJJnAkqyClCEkkfdM1Pt13VHdxDpnof0jgxB+mYqO5PaCSDRIAbgDgdpKjtmwm13irsnq4ATdKeYcNvUZAt0dg5NVwEQFKrJlpn45lwh/LpbWdela4K5QsXEN61tytWr81l5YSY/n4wdQH84qjd2J6vEz+W0BOAGgLlE/AMAPQCv6e4gmWYC/QF3d/7zf8P/An4AWL/T1+B2nyIAAAAASUVORK5CYII=) no-repeat scroll 0 10px;
 	padding:15px 0 10px 40px;
 }
-.download {
+tr:not(.is_dir) .download {
 	background: url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAB2klEQVR4nJ2ST2sTQRiHn5mdmj92t9XmUJIWJGq9NHrRgxQiCtqbl97FqxgaL34CP0FD8Qv07EHEU0Ew6EXEk6ci8Q9JtcXEkHR3k+zujIdUqMkmiANzmJdnHn7vzCuIWbe291tSkvhz1pr+q1L2bBwrRgvFrcZKKinfP9zI2EoKmm7Azstf3V7fXK2Wc3ujvIqzAhglwRJoS2ImQZMEBjgyoDS4hv8QGHA1WICvp9yelsA7ITBTIkwWhGBZ0Iv+MUF+c/cB8PTHt08snb+AGAACZDj8qIN6bSe/uWsBb2qV24/GBLn8yl0plY9AJ9NKeL5ICyEIQkkiZenF5XwBDAZzWItLIIR6LGfk26VVxzltJ2gFw2a0FmQLZ+bcbo/DPbcd+PrDyRb+GqRipbGlZtX92UvzjmUpEGC0JgpC3M9dL+qGz16XsvcmCgCK2/vPtTNzJ1x2kkZIRBSivh8Z2Q4+VkvZy6O8HHvWyGyITvA1qndNpxfguQNkc2CIzM0xNk5QLedCEZm1VKsf2XrAXMNrA2vVcq4ZJ4DhvCSAeSALXASuLBTW129U6oPrT969AK4Bq0AeWARs4BRgieMUEkgDmeO9ANipzDnH//nFB0KgAxwATaAFeID5DQNatLGdaXOWAAAAAElFTkSuQmCC) no-repeat scroll 0 5px;
 	padding:4px 0 4px 20px;
+}
+tr.is_dir .download {
+    background: url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAB+UlEQVQ4T5WTsYsaQRTGv1l1N1lXCy+GYCUWNoZUsU4nJmAhChZCSGGTLt26awoJumqZIun8E64IoiFiIZJAigObg0AabYREyXLZdS/qqhNG9AjnHcaBx8CbeT/e980bghtWrVbTCSHC7ohSOpdl2XfTXXI9qWlaWBCEs3Q67eE4DtPpFM1m01wsFo9VVf1+/f6tgEwm43E4HDAMA41G43hAKpXaAEzTRKvVOg7A8/xZMpncSGCAdrt9PCCRSFx50Ol0TNu2/98D1kE8Ht9IYCZ2u93DgFwu95JS+t7lciEUCiEWi4EQgtlshl6vZw6Hw2/z+dxBKf1cr9df7V7j6hVKpdJHjuOeEELWkiSRaDQqMoBt2+j3+79N0+RZESGkqyjKsz1AuVx+yPP8l3A47JUkCax9ttbrNZbL5UbKYDC4mM1m7wqFwus9AEtomvZWFMUXwWDQuwNQSjddjEajS8uyThVFef7vMO0NUqVS+eB2u2N+v//OrgNd16llWef5fP7RwUksFotOQRDORVEMezweslqtMB6P14SQ+6qq/joI2Eo5oZT+CAQCzslkckEpfSrL8tfbPhNzywngLgARgJvtkUjkQTabbRiG8alarb4B8AfA5TYsAHMAK+YBtw1WfG8bJwA8Pp/Pq+s6K1wCMAD8BMBk6FsQ/QtFEvUWhGKiegAAAABJRU5ErkJggg==) no-repeat scroll 0 5px;
+    padding:4px 0 4px 20px;
 }
 </style>
 <script src="//ajax.googleapis.com/ajax/libs/jquery/1.8.2/jquery.min.js"></script>
 <script>
 (function($){
-	$.fn.tablesorter = function() {
+	$.fn.tableSorter = function() {
 		var $table = this;
 		this.find('th').click(function() {
 			var idx = $(this).index();
 			var direction = $(this).hasClass('sort_asc');
-			$table.tablesortby(idx,direction);
+			$table.tableSortBy(idx,direction);
 		});
 		return this;
 	};
-	$.fn.tablesortby = function(idx,direction) {
+	$.fn.tableSortBy = function(idx,direction) {
 		var $rows = this.find('tbody tr');
 		function elementToVal(a) {
 			var $a_elem = $(a).find('td:nth-child('+(idx+1)+')');
 			var a_val = $a_elem.attr('data-sort') || $a_elem.text();
-			return (a_val == parseInt(a_val) ? parseInt(a_val) : a_val);
+			return (a_val === parseInt(a_val) ? parseInt(a_val) : a_val);
 		}
 		$rows.sort(function(a,b){
 			var a_val = elementToVal(a), b_val = elementToVal(b);
-			return (a_val > b_val ? 1 : (a_val == b_val ? 0 : -1)) * (direction ? 1 : -1);
-		})
+			return (a_val > b_val ? 1 : (a_val === b_val ? 0 : -1)) * (direction ? 1 : -1);
+		});
 		this.find('th').removeClass('sort_asc sort_desc');
 		$(this).find('thead th:nth-child('+(idx+1)+')').addClass(direction ? 'sort_desc' : 'sort_asc');
 		for(var i =0;i<$rows.length;i++)
 			this.append($rows[i]);
-		this.settablesortmarkers();
+		this.setTableSortMarkers();
 		return this;
-	}
-	$.fn.retablesort = function() {
+	};
+	$.fn.reTableSort = function() {
 		var $e = this.find('thead th.sort_asc, thead th.sort_desc');
 		if($e.length)
-			this.tablesortby($e.index(), $e.hasClass('sort_desc') );
+			this.tableSortBy($e.index(), $e.hasClass('sort_desc') );
 		
 		return this;
-	}
-	$.fn.settablesortmarkers = function() {
+	};
+	$.fn.setTableSortMarkers = function() {
 		this.find('thead th span.indicator').remove();
 		this.find('thead th.sort_asc').append('<span class="indicator">&darr;<span>');
 		this.find('thead th.sort_desc').append('<span class="indicator">&uarr;<span>');
@@ -260,13 +319,14 @@ a.delete {display:inline-block;
 $(function(){
 	var XSRF = (document.cookie.match('(^|; )_sfm_xsrf=([^;]*)')||0)[2];
 	var MAX_UPLOAD_SIZE = <?php echo $MAX_UPLOAD_SIZE ?>;
+	$('.max-file-size').text(formatFileSize(MAX_UPLOAD_SIZE));
 	var $tbody = $('#list');
 	$(window).bind('hashchange',list).trigger('hashchange');
-	$('#table').tablesorter();
+	$('#table').tableSorter();
 	
-	$('.delete').live('click',function(data) {
+	$('.delete').live('click',function() {
     if (confirm("WARNING! \nPermanently delete "+$(this).attr('data-file')+" ?")) {
-        $.post("", {'do': 'delete', file: $(this).attr('data-file'), xsrf: XSRF}, function (response) {
+        $.post("", {'do': 'delete', file: $(this).attr('data-file'), xsrf: XSRF}, function () {
             list();
         }, 'json');
         return false;
@@ -275,10 +335,10 @@ $(function(){
 	});
 
 	$('#mkdir').submit(function(e) {
-		var hashval = window.location.hash.substr(1),
+		var hashVal = window.location.hash.substr(1),
 			$dir = $(this).find('[name=name]');
 		e.preventDefault();
-		$dir.val().length && $.post('?',{'do':'mkdir',name:$dir.val(),xsrf:XSRF,file:hashval},function(data){
+		$dir.val().length && $.post('?',{'do':'mkdir',name:$dir.val(),xsrf:XSRF,file:hashVal},function(){
 			list();
 		},'json');
 		$dir.val('');
@@ -310,16 +370,17 @@ $(function(){
 
 	function uploadFile(file) {
 		var folder = window.location.hash.substr(1);
+        var progress = $('#upload_progress');
 
 		if(file.size > MAX_UPLOAD_SIZE) {
 			var $error_row = renderFileSizeErrorRow(file,folder);
-			$('#upload_progress').append($error_row);
+            progress.append($error_row);
 			window.setTimeout(function(){$error_row.fadeOut();},5000);
 			return false;
 		}
 		
 		var $row = renderFileUploadRow(file,folder);
-		$('#upload_progress').append($row);
+        progress.append($row);
 		var fd = new FormData();
 		fd.append('file_data',file);
 		fd.append('file',folder);
@@ -339,33 +400,34 @@ $(function(){
 	    xhr.send(fd);
 	}
 	function renderFileUploadRow(file,folder) {
-		return $row = $('<div/>')
+		return $('<div/>')
 			.append( $('<span class="fileuploadname" />').text( (folder ? folder+'/':'')+file.name))
 			.append( $('<div class="progress_track"><div class="progress"></div></div>')  )
 			.append( $('<span class="size" />').text(formatFileSize(file.size)) )
-	};
+	}
 	function renderFileSizeErrorRow(file,folder) {
-		return $row = $('<div class="error" />')
+		return $('<div class="error" />')
 			.append( $('<span class="fileuploadname" />').text( 'Error: ' + (folder ? folder+'/':'')+file.name))
 			.append( $('<span/>').html(' file size - <b>' + formatFileSize(file.size) + '</b>'
 				+' exceeds max upload size of <b>' + formatFileSize(MAX_UPLOAD_SIZE) + '</b>')  );
 	}
 <?php endif; ?>
 	function list() {
-		var hashval = window.location.hash.substr(1);
-		$.get('?',{'do':'list','file':hashval},function(data) {
+		var hashVal = window.location.hash.substr(1);
+		$.get('?',{'do':'list','file':hashVal},function(data) {
 			$tbody.empty();
-			$('#breadcrumb').empty().html(renderBreadcrumbs(hashval));
+			$('#breadcrumb').empty().html(renderBreadcrumbs(hashVal));
 			if(data.success) {
 				$.each(data.results,function(k,v){
 					$tbody.append(renderFileRow(v));
 				});
-				!data.results.length && $tbody.append('<tr><td class="empty" colspan=5>This folder is empty</td></tr>')
-				data.is_writable ? $('body').removeClass('no_write') : $('body').addClass('no_write');
+				!data.results.length && $tbody.append('<tr><td class="empty" colspan=5>This folder is empty</td></tr>');
+				var body = $('body');
+				data.is_writable ? body.removeClass('no_write') : body.addClass('no_write');
 			} else {
 				console.warn(data.error.msg);
 			}
-			$('#table').retablesort();
+			$('#table').reTableSort();
 		},'json');
 	}
 	function renderFileRow(data) {
@@ -374,26 +436,31 @@ $(function(){
 			.text(data.name);
 		var allow_direct_link = <?php echo $allow_direct_link?'true':'false'; ?>;
         	if (!data.is_dir && !allow_direct_link)  $link.css('pointer-events','none');
-		var $dl_link = $('<a/>').attr('href','?do=download&file='+encodeURIComponent(data.path))
-			.addClass('download').text('download');
+		var $dl_link = data.is_dir ? $('<span/>').addClass('download').text('download') : $('<a/>').attr('href','?do=download&file='+encodeURIComponent(data.path))
+            .addClass('download').text('download');
 		var $delete_link = $('<a href="#" />').attr('data-file',data.path).addClass('delete').text('delete');
-		var perms = [];
-		if(data.is_readable) perms.push('read');
-		if(data.is_writable) perms.push('write');
-		if(data.is_executable) perms.push('exec');
-		var $html = $('<tr />')
+        return $('<tr />')
 			.addClass(data.is_dir ? 'is_dir' : '')
 			.append( $('<td class="first" />').append($link) )
 			.append( $('<td/>').attr('data-sort',data.is_dir ? -1 : data.size)
 				.html($('<span class="size" />').text(formatFileSize(data.size))) ) 
 			.append( $('<td/>').attr('data-sort',data.mtime).text(formatTimestamp(data.mtime)) )
-			.append( $('<td/>').text(perms.join('+')) )
-			.append( $('<td/>').append($dl_link).append( data.is_deleteable ? $delete_link : '') )
-		return $html;
+            .append( $('<td/>').text(data.unix_owner) )
+            .append( $('<td/>').text(data.unix_perms) )
+			.append( $('<td/>').append($dl_link).append( data.is_deleteable ? $delete_link : '') );
 	}
 	function renderBreadcrumbs(path) {
+	    var breadcrumbBase = <?php echo json_encode($breadcrumb_base) ?>;
+        var breadcrumbBaseKeys = Object.keys(breadcrumbBase);
+        var breadcrumbBaseRendered = '';
+        for (let i = 0; i < breadcrumbBaseKeys.length; i++){
+            breadcrumbBaseRendered += '<a href="' + breadcrumbBase[breadcrumbBaseKeys[i]] + '">' + breadcrumbBaseKeys[i] + '</a>';
+            if (i + 1 < breadcrumbBaseKeys.length){
+                breadcrumbBaseRendered += '<span> ▸ </span>';
+            }
+        }
 		var base = "",
-			$html = $('<div/>').append( $('<a href=#>Home</a></div>') );
+			$html = $('<div/>').append( $(breadcrumbBaseRendered + '</div>') );
 		$.each(path.split('/'),function(k,v){
 			if(v) {
 				$html.append( $('<span/>').text(' ▸ ') )
@@ -422,9 +489,9 @@ $(function(){
 </head><body>
 <div id="top">
    <?php if($allow_upload == true): ?>
-	<form action="?" method="post" id="mkdir" />
-		<label for=dirname>Create New Folder</label><input id=dirname type=text name=name value="" />
-		<input type="submit" value="create" />
+	<form action="?" method="post" id="mkdir">
+		<label for=dirname>Create New Folder</label><input id=dirname type=text name=name value="">
+		<input type="submit" value="create">
 	</form>
 
    <?php endif; ?>
@@ -432,9 +499,9 @@ $(function(){
    <?php if($allow_upload == true): ?>
 
 	<div id="file_drop_target">
-		Drag Files Here To Upload
+		Drag Files Here To Upload (Max <span class="max-file-size"></span>)
 		<b>or</b>
-		<input type="file" multiple />
+		<input type="file" multiple>
 	</div>
    <?php endif; ?>
 	<div id="breadcrumb">&nbsp;</div>
@@ -445,6 +512,7 @@ $(function(){
 	<th>Name</th>
 	<th>Size</th>
 	<th>Modified</th>
+    <th>Ownership</th>
 	<th>Permissions</th>
 	<th>Actions</th>
 </tr></thead><tbody id="list">
