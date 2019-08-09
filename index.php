@@ -66,9 +66,15 @@ if($_GET['do'] == 'list') {
 	    foreach($files as $entry) if($entry !== basename(__FILE__)) {
     		$i = $directory . '/' . $entry;
 	    	$stat = stat($i);
+            $size = 0;
+	    	if(is_dir($i)){
+                $size = directorySize($i);
+            } else {
+                $size = filesize2($i);
+            }
 	        $result[] = array(
 	        	'mtime' => $stat['mtime'],
-	        	'size' => $stat['size'],
+	        	'size' => $size,
 	        	'name' => basename($i),
 	        	'path' => preg_replace('@^\./@', '', $i),
 	        	'is_dir' => is_dir($i),
@@ -113,6 +119,39 @@ if($_GET['do'] == 'list') {
 	ob_flush();
 	readfile($file);
 	exit;
+}
+
+function filesize2($path) {
+    $sizeInBytes = (string)@filesize($path);
+    if(strtoupper(substr(PHP_OS, 0, 3)) !== 'WIN'){
+        if($sizeInBytes === false || $sizeInBytes < 0){
+            $command = "/bin/ls -l " . escapeshellarg($path);
+            $ret = trim(exec($command));
+            if(!substr_count($ret, "ls:") && !substr_count($ret, "No such file")){
+                $arr = preg_split('/\s+/', $ret);
+                $sizeInBytes = $arr[4];
+            }
+        }
+    }
+    return $sizeInBytes;
+}
+function directorySize($path) {
+    $size = 0;
+    $path = escapeshellarg($path);
+    if(strtoupper(substr(PHP_OS, 0, 3)) === 'WIN'){
+        $obj = new COM('scripting.filesystemobject');
+        if(is_object($obj)){
+            $ref = $obj->getfolder($path);
+            $size = $ref->size;
+            $obj = null;
+        }
+    }else{
+        $io = popen('/usr/bin/du -sk -B1 ' . $path, 'r');
+        $tempSize = fgets($io, 4096);
+        $size = substr($tempSize, 0, strpos($tempSize, "\t"));
+        pclose($io);
+    }
+    return $size;
 }
 // As mime_content_type() fails on Windows
 function detectFileMimeType($filename='')
@@ -248,8 +287,6 @@ thead {max-width: 1024px}
 td { padding:.2em 1em .2em .2em; border-bottom:1px solid #def;height:30px; font-size:12px;white-space: nowrap;}
 td.first {font-size:14px;white-space: normal;}
 td.empty { color:#777; font-style: italic; text-align: center;padding:3em 0;}
-.is_dir .size {color:transparent;font-size:0;}
-.is_dir .size:before {content: "--"; font-size:14px;color:#333;}
 .is_dir .download{color: #999}
 a.delete {display:inline-block;
 	background: url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAoAAAAKCAYAAACNMs+9AAAABGdBTUEAAK/INwWK6QAAABl0RVh0U29mdHdhcmUAQWRvYmUgSW1hZ2VSZWFkeXHJZTwAAADtSURBVHjajFC7DkFREJy9iXg0t+EHRKJDJSqRuIVaJT7AF+jR+xuNRiJyS8WlRaHWeOU+kBy7eyKhs8lkJrOzZ3OWzMAD15gxYhB+yzAm0ndez+eYMYLngdkIf2vpSYbCfsNkOx07n8kgWa1UpptNII5VR/M56Nyt6Qq33bbhQsHy6aR0WSyEyEmiCG6vR2ffB65X4HCwYC2e9CTjJGGok4/7Hcjl+ImLBWv1uCRDu3peV5eGQ2C5/P1zq4X9dGpXP+LYhmYz4HbDMQgUosWTnmQoKKf0htVKBZvtFsx6S9bm48ktaV3EXwd/CzAAVjt+gHT5me0AAAAASUVORK5CYII=) no-repeat scroll 0 2px;
@@ -272,7 +309,8 @@ tr.is_dir .download {
     padding:4px 0 4px 20px;
 }
 </style>
-<script src="//ajax.googleapis.com/ajax/libs/jquery/1.8.2/jquery.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.4.1/jquery.min.js"
+        integrity="sha256-CSXorXvZcTkaix6Yvo6HppcZGetbYMGWSFlBw8HfCJo=" crossorigin="anonymous"></script>
 <script>
 (function($){
 	$.fn.tableSorter = function() {
@@ -322,9 +360,7 @@ $(function(){
 	$('.max-file-size').text(formatFileSize(MAX_UPLOAD_SIZE));
 	var $tbody = $('#list');
 	$(window).bind('hashchange',list).trigger('hashchange');
-	$('#table').tableSorter();
-	
-	$('.delete').live('click',function() {
+	$('#table').tableSorter().on('click', '.delete', function() {
     if (confirm("WARNING! \nPermanently delete "+$(this).attr('data-file')+" ?")) {
         $.post("", {'do': 'delete', file: $(this).attr('data-file'), xsrf: XSRF}, function () {
             list();

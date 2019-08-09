@@ -8,6 +8,8 @@ A very simple PHP file manager. All the code is contained in a single php file.
 - Delete Confirmation 
 - Files to hide are configurable
 - Supports spaces in file/folder name
+- Shows folder size
+- Fixed file size listing for files over 2GB (PHP limitation) 
 
 ## Key Features
 
@@ -24,7 +26,7 @@ Copy `index.php` to a folder on your web server.
 
 ## Screenshot
 
-![Screenshot](https://raw.github.com/jcampbell1/simple-file-manager/master/screenshot.png "Screenshot")
+![Screenshot](https://raw.github.com/sonicer105/simple-php-file-manager/master/screenshot.png "Screenshot")
 
 ### Todo
 
@@ -34,4 +36,4 @@ Copy `index.php` to a folder on your web server.
 
 - [jcampbell1](https://github.com/jcampbell1/simple-file-manager) for the original project
 - [thinkdj](https://github.com/thinkdj/simple-php-file-manager) for deletion confirmations and file/folder hiding
-- [sonicer105](https://github.com/sonicer105/simple-php-file-manager) for spaces in file/folder name support
+- [sonicer105](https://github.com/sonicer105/simple-php-file-manager) for spaces in file/folder name support, folder size listing, and 2GB+ file size fix
